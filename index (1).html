@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>منيو الارجوانة</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Reem+Kufi:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--ink:#14302B;--paper:#F2F6F4;--accent:#E8A22B;--dark:#14302B;--muted:#5E7A73;--line:#C4D3CE}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:"IBM Plex Sans Arabic",Tahoma,sans-serif;background:var(--paper);color:var(--ink);line-height:1.7;font-size:17px}
+  header{background:var(--dark);color:#fff;padding:34px 20px 26px;text-align:center}
+  header h1{font-family:"Reem Kufi",serif;font-size:2.8rem;line-height:1.2}
+  header p{color:#B9D0C9;margin-top:6px;font-size:.95rem}
+  nav{position:sticky;top:0;z-index:5;background:var(--paper);display:flex;gap:8px;overflow-x:auto;padding:12px 16px;border-bottom:1px solid var(--line);scrollbar-width:none}
+  nav::-webkit-scrollbar{display:none}
+  nav a{flex:none;text-decoration:none;color:var(--ink);padding:7px 16px;border-radius:999px;border:1.5px solid var(--ink);font-weight:500;font-size:.95rem}
+  nav a:active{background:var(--ink);color:#fff}
+  main{max-width:640px;margin:0 auto;padding:8px 18px 60px}
+  section{padding-top:28px;scroll-margin-top:60px}
+  section h2{font-family:"Reem Kufi",serif;font-size:1.7rem;margin-bottom:6px}
+  .item{display:flex;align-items:baseline;gap:10px;padding:11px 0}
+  .name{font-weight:600}
+  .note{display:block;color:var(--muted);font-size:.85rem;font-weight:400;line-height:1.5}
+  .dots{flex:1;border-bottom:2px dotted var(--line);transform:translateY(-4px);min-width:16px}
+  .price{font-weight:600;font-size:1.1rem;white-space:nowrap;background:var(--accent);padding:1px 10px;border-radius:6px}
+  .price small{font-weight:500;font-size:.75rem;margin-inline-start:2px}
+  .ask{color:var(--muted);font-size:.85rem;white-space:nowrap}
+  .status{text-align:center;color:var(--muted);padding:40px 0}
+  footer{text-align:center;color:var(--muted);font-size:.85rem;padding:0 20px 40px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>الارجوانة</h1>
+  <p>أهلاً بيك .. اختار الداير</p>
+</header>
+
+<nav id="tabs"></nav>
+<main id="menu"><p class="status">جاري تحميل المنيو...</p></main>
+
+<footer>الأسعار بالجنيه السوداني وممكن تتغير</footer>
+
+<script>
+/* الصق رابط الجدول (Publish to web - CSV) بين العلامتين */
+const SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTIMNTFfUR59WoUEoiGlVq4E9Zz7b_hvad5qyV7UFAmPCJdcHwLf7cC-WUJwU-IehKfzMWkmwW_xuJW/pub?gid=2138741860&single=true&output=csv";
+
+const CURRENCY = "ج";
+
+/* منيو احتياطي يظهر لو الجدول ما اشتغل: [القسم, الصنف, السعر, ملاحظة] */
+const FALLBACK = [
+  ["مشروبات ساخنة","شاي","1000",""],
+  ["مشروبات ساخنة","قهوة","1500","قهوة سودانية بالجنزبيل"],
+  ["مشروبات باردة","عصير ليمون","2500",""],
+  ["وجبات","ساندوتش جبنة","3500",""],
+];
+
+function parseCSV(text){
+  const rows=[]; let row=[], cell="", q=false;
+  text = text.replace(/^\uFEFF/, "");
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){
+      if(c==='"'){ if(text[i+1]==='"'){cell+='"';i++;} else q=false; }
+      else cell+=c;
+    } else if(c==='"') q=true;
+    else if(c===","){ row.push(cell); cell=""; }
+    else if(c==="\n"||c==="\r"){
+      if(c==="\r"&&text[i+1]==="\n") i++;
+      row.push(cell); cell=""; rows.push(row); row=[];
+    } else cell+=c;
+  }
+  if(cell!==""||row.length){ row.push(cell); rows.push(row); }
+  return rows;
+}
+
+function toNumber(s){
+  s=(s||"").replace(/[٠-٩]/g,d=>"٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[^\d.]/g,"");
+  return s?Number(s):null;
+}
+
+function render(rows){
+  const tabs=document.getElementById("tabs");
+  const menu=document.getElementById("menu");
+  tabs.textContent=""; menu.textContent="";
+
+  const cats=new Map();
+  rows.forEach((r,idx)=>{
+    const cat=(r[0]||"").trim(), name=(r[1]||"").trim();
+    if(!cat||!name) return;
+    if(idx===0 && cat==="القسم") return;           // صف العناوين
+    const avail=(r[4]||"").trim().toLowerCase();
+    if(["لا","no","0","x","✗"].includes(avail)) return; // صنف غير متوفر
+    if(!cats.has(cat)) cats.set(cat,[]);
+    cats.get(cat).push({name, price:toNumber(r[2]), note:(r[3]||"").trim()});
+  });
+
+  if(!cats.size){
+    const p=document.createElement("p"); p.className="status";
+    p.textContent="المنيو غير متاح حالياً";
+    menu.appendChild(p); return;
+  }
+
+  let i=0;
+  cats.forEach((items,cat)=>{
+    const id="cat"+(i++);
+    const a=document.createElement("a");
+    a.href="#"+id; a.textContent=cat; tabs.appendChild(a);
+
+    const sec=document.createElement("section"); sec.id=id;
+    const h=document.createElement("h2"); h.textContent=cat; sec.appendChild(h);
+
+    items.forEach(it=>{
+      const row=document.createElement("div"); row.className="item";
+      const nm=document.createElement("div"); nm.className="name"; nm.textContent=it.name;
+      if(it.note){
+        const n=document.createElement("span"); n.className="note"; n.textContent=it.note; nm.appendChild(n);
+      }
+      const dots=document.createElement("div"); dots.className="dots";
+      row.append(nm,dots);
+      if(it.price!==null){
+        const p=document.createElement("div"); p.className="price";
+        p.textContent=it.price.toLocaleString("en-US");
+        const s=document.createElement("small"); s.textContent=CURRENCY; p.appendChild(s);
+        row.appendChild(p);
+      } else {
+        const p=document.createElement("div"); p.className="ask"; p.textContent="اسأل عن السعر";
+        row.appendChild(p);
+      }
+      sec.appendChild(row);
+    });
+    menu.appendChild(sec);
+  });
+}
+
+if(SHEET_URL.startsWith("http")){
+  const url=SHEET_URL+(SHEET_URL.includes("?")?"&":"?")+"t="+Date.now();
+  fetch(url).then(r=>{ if(!r.ok) throw 0; return r.text(); })
+    .then(t=>render(parseCSV(t)))
+    .catch(()=>render(FALLBACK));
+} else {
+  render(FALLBACK);
+}
+</script>
+</body>
+</html>
